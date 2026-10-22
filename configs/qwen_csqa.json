@@ -1,0 +1,10 @@
+{
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "task": "csqa",
+  "ks": "100,all",
+  "output": "runs/qwen_csqa",
+  "max_new_tokens": 512,
+  "verify_replay": 3,
+  "temperature": 0.0,
+  "seed": 0
+}

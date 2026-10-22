@@ -1,0 +1,10 @@
+{
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "task": "gsm8k",
+  "ks": "all",
+  "output": "runs/qwen_gsm8k",
+  "max_new_tokens": 512,
+  "verify_replay": 3,
+  "temperature": 0.0,
+  "seed": 0
+}

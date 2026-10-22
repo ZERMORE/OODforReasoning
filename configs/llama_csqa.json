@@ -1,0 +1,10 @@
+{
+  "model": "meta-llama/Llama-3.2-3B-Instruct",
+  "task": "csqa",
+  "ks": "1000,all",
+  "output": "runs/llama_csqa",
+  "max_new_tokens": 512,
+  "verify_replay": 3,
+  "temperature": 0.0,
+  "seed": 0
+}

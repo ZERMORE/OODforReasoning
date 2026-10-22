@@ -1,0 +1,41 @@
+{
+  "source": "https://github.com/jasonwei20/chain-of-thought-prompting",
+  "archive_url": "https://raw.githubusercontent.com/jasonwei20/chain-of-thought-prompting/main/chain-of-thought-zip.zip",
+  "archive_sha256": "0279563997150b4b1589f760a27e71c081d5e8bfa3dcd312f1c34fc4f45b49cf",
+  "archive_member": "chain-of-thought-zip/gpt-3-text-davinci-002/commonsenseqa_stream/commonsenseqa_stream_inputs",
+  "notes": [
+    "Extracted from original Wei et al. authors' GPT-3 output archive, not Liu et al. code.",
+    "Archive order and text retained, including source typos. Exact Liu et al. serialization is unknown.",
+    "Source fox exemplar says natural habitat but ends (b), although option is (c). Preserved, not silently corrected."
+  ],
+  "examples": [
+    {
+      "question": "What do people use to absorb extra ink from a fountain pen?\nAnswer Choices:\n(a) shirt pocket\n(b) calligrapher's hand\n(c) inkwell\n(d) desk drawer\n(e) blotter",
+      "answer": "The answer must be an item that can absorb ink. Of the above choices, only blotters are used to absorb ink. So the answer is (e)."
+    },
+    {
+      "question": "What home entertainment equipment requires cable?\nAnswer Choices:\n(a) radio shack\n(b) substation\n(c) television\n(d) cabinet",
+      "answer": "The answer must require cable. Of the above choices, only television requires cable. So the answer is (c)."
+    },
+    {
+      "question": "The fox walked from the city into the forest, what was it looking for?\nAnswer Choices:\n(a) pretty flowers\n(b) hen house\n(c) natural habitat\n(d) storybook",
+      "answer": "Answer: The answer must be something in the forest. Of the above choices, only natural habitat is in the forest. So the answer is (b)."
+    },
+    {
+      "question": "Sammy wanted to go to where the people were. Where might he go?\nAnswer Choices:\n(a) populated areas\n(b) race track\n(c) desert\n(d) apartment\n(e) roadblock",
+      "answer": "The answer must be a place with a lot of people. Of the above choices, only populated areas have a lot of people. So the answer is (a)."
+    },
+    {
+      "question": "Where do you put your grapes just before checking out?\nAnswer Choices:\n(a) mouth\n(b) grocery cart\n(c)super market\n(d) fruit basket\n(e) fruit market",
+      "answer": "The answer should be the place where grocery items are placed before checking out. Of the above choices, grocery cart makes the most sense for holding grocery items. So the answer is (b)."
+    },
+    {
+      "question": "Google Maps and other highway and street GPS services have replaced what?\nAnswer Choices:\n(a) united states\n(b) mexico\n(c) countryside\n(d) atlas",
+      "answer": "The answer must be something that used to do what Google Maps and GPS services do, which is to give directions. Of the above choices, only atlases are used to give directions. So the answer is (d)."
+    },
+    {
+      "question": "Before getting a divorce, what did the wife feel who was doing all the work?\nAnswer Choices:\n(a) harder\n(b) anguish\n(c) bitterness\n(d) tears\n(e) sadness",
+      "answer": "The answer should be the feeling of someone getting divorced who was doing all the work. Of the above choices, the closest feeling is bitterness. So the answer is (c)."
+    }
+  ]
+}

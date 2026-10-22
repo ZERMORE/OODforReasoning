@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ood-hallucination-reproduction"
+version = "0.1.0"
+description = "Independent reproduction of NCI and fDBD for hallucination detection"
+requires-python = ">=3.10"
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools.packages.find]
+include = ["ood_repro*"]
+
+[tool.setuptools.package-data]
+ood_repro = ["prompts/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

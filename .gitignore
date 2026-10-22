@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.cache/
+runs/
+data/
+models/
+*.zip
+*.safetensors
+*.bin
+.env
+*.egg-info/
+build/
+dist/

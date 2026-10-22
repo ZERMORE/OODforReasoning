@@ -1,0 +1,11 @@
+# Install the CUDA build of torch appropriate for your server first (see README).
+torch>=2.3,<2.7
+transformers==4.46.3
+datasets==3.6.0
+accelerate==1.15.0
+safetensors>=0.4.5,<1
+numpy==1.26.4
+pyarrow==19.0.1
+scikit-learn>=1.5,<2
+tqdm>=4.66,<5
+pytest>=8,<9

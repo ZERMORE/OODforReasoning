@@ -1,0 +1,10 @@
+{
+  "model": "meta-llama/Llama-3.2-3B-Instruct",
+  "task": "aqua",
+  "ks": "100,all",
+  "output": "runs/llama_aqua",
+  "max_new_tokens": 512,
+  "verify_replay": 3,
+  "temperature": 0.0,
+  "seed": 0
+}
