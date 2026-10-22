@@ -8,6 +8,8 @@
 - 包含 online / replay、在线重放校验、严格答案抽取、断点续跑、独立训练子集选 k、配对 bootstrap 和在线延迟比较。
 - TruthfulQA judge、多样本基线、经验均值消融和步骤级检测是后续工作，不包含在当前主结果实现中。
 
+**等待 Llama 审核时，可先执行 [Qwen 7B 服务器流程](docs/QWEN_SERVER.md)**：`bash scripts/run_qwen.sh prepare` → `smoke` → `main`。入口只运行 Qwen 三任务，模型与数据固定到 commit，结果与缓存默认位于 `/mnt/data/wxh/wdl`。
+
 ## 1. 服务器安装
 
 建议 Linux、Python 3.10/3.11、单张 24 GB GPU，batch size 固定为 1。24 GB 是工程预算，实际用量由上下文和评分配置决定。先运行小样本，再扩大任务。默认不量化，不进行模型训练。
