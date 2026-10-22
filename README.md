@@ -42,7 +42,9 @@ python -m ood_repro run \
 
 JSON 配置提供默认值，显式 CLI 参数优先。`max_new_tokens=512`、默认排除 EOS、chat 格式和不额外使用字符串停止符都是**公开记录的本实现选择**，不是论文已明确披露的设置。
 
-`--verify-replay 3` 会对前三个未完成样本核对在线与重放分数；默认容差为 `atol=0.001, rtol=0.01`，可用 `--verify-atol` / `--verify-rtol` 调整。FP32 单元测试使用更严格容差。BF16 和不同 attention 内核的运算顺序可能产生误差，不应为贴近结果盲目放宽容差。
+`--verify-replay 3` 会对前三个未完成样本核对在线与重放的 token 位置、token ID、逐 token 分数和序列分数。默认 `--verify-replay-mode matched`：重放整个 prompt 的 prefill，再逐 token teacher forcing，与在线路径保持相同计算形状；默认容差仍为 `atol=0.001, rtol=0.01`，没有放宽。失败时保存 `verification-failure-*.json`（两条轨迹、具体失败指标和位置），且不把失败样本写成成功预测。
+
+`--verify-replay-mode chunked` 可显式检查不同分块形状的独立重放，但 BF16 下不同 GEMM/attention 形状的舍入差异可能超出相同容差；它不再是默认数值一致性门槛。FP32 单元测试仍保留分块重放与独立全序列位置校验，避免同形状校验掩盖对齐错误。
 
 输出目录包含：
 
@@ -106,7 +108,7 @@ python -m ood_repro run --config configs/llama_csqa.json \
   --output runs/llama_csqa_t05_seed1
 ```
 
-Online 在每次预测时 hook LM head 的实际输入；replay 以 `prompt[:-1]` 建立 cache，再输入 `[prompt[-1], y1, ..., y(T-1)]`，保证第一个生成 token 不漏计。两者均排除 prompt 与 padding；当前 batch=1，不引入 padding。随机解码的 NCI/fDBD 使用原始 logits 的 argmax，PPL 使用实际生成 token。`nci_decoded` 是附录 K 的额外变体。
+Online 在每次预测时 hook LM head 的实际输入。默认数值校验为同形状 matched replay；独立的 `--score-mode replay` 仍以 `prompt[:-1]` 建立 cache，再分块输入 `[prompt[-1], y1, ..., y(T-1)]`，保证第一个生成 token 不漏计。两者均排除 prompt 与 padding；当前 batch=1，不引入 padding。缓存采用显式 `DynamicCache`。随机解码的 NCI/fDBD 使用原始 logits 的 argmax，PPL 使用实际生成 token。`nci_decoded` 是附录 K 的额外变体。
 
 **只有 online 的耗时包含评分。** replay 输出的 `elapsed_seconds` 只代表生成，不包含重放，记录中有明确 timing_scope。不要将 replay 结果解释为低开销在线检测。
 

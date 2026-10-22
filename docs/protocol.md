@@ -23,7 +23,7 @@
 ## 阶段验收
 
 1. 数学：解析三类几何、偏置中心一阶条件、k=V−1 对照、退化范数、tie、方向性；全部测试通过。
-2. 引擎：随机 tiny Llama 与 Qwen2，在线、分块重放、单次全序列独立位置校验一致；hook 清理、EOS、随机种子测试通过。
+2. 引擎：默认 matched replay 维持在线完整 prefill 与单 token decode 形状，严格核对位置、token ID 和逐 token / 序列分数。另以 FP32 的分块重放与单次全序列独立位置校验验证因果对齐；长 prompt 的 CUDA 低精度模型验证同形状评分。hook 清理、EOS、随机种子和失败诊断落盘测试通过。默认 rtol/atol 不因分块 BF16 差异而放宽。
 3. 端到端：本地 tiny checkpoint、tokenizer、JSONL 数据，不联网执行 run/evaluate/resume；配置覆盖和不一致续跑拒绝测试通过。
 4. 服务器小样本：20–50 题，无 NaN/inf；审查 prompt、长度、抽取失败与 EOS；BF16 容差经检查；此阶段不看小样本 AUROC 是否贴近论文。
 5. Llama+CSQA 全集：对照 PPL 63.23、NCI 66.07、fDBD All 68.15、k1000 69.24（AUROC×100）；以结果偏差、配对 CI 和协议差异报告，不预设 ±1 点就是成功。

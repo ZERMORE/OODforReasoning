@@ -44,6 +44,9 @@ def test_cli_run_replay_resume_and_config_override(tmp_path, tiny_checkpoint):
     assert manifest["config"]["max_new_tokens"] == 4
     prediction = (output / "predictions.jsonl").read_text(encoding="utf-8")
     assert json.loads(prediction)["online_replay_abs_diff"] is not None
+    assert json.loads(prediction)["online_replay_verification"]["mode"] == "matched"
+    assert json.loads(prediction)["online_replay_verification"]["passed"]
+    assert json.loads(prediction)["token_scores"] == []
     result = subprocess.run(cmd + ["--resume"], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert (output / "predictions.jsonl").read_text(encoding="utf-8") == prediction
@@ -61,3 +64,31 @@ def test_cli_benchmark_has_separate_detector_paths(tmp_path, tiny_checkpoint):
     report = json.loads(output.read_text(encoding="utf-8"))
     assert set(report["raw_ms_per_token"]) == {"standard", "nci", "fdbd"}
     assert len(report["generated_ids"]) == 3
+
+
+def test_verification_failure_saves_diagnostic_and_does_not_write_success(tmp_path, tiny_checkpoint, monkeypatch):
+    from ood_repro import cli, engine
+    data = tmp_path / "rows.jsonl"
+    data.write_text(json.dumps({"question": "2+2?", "answer": "#### 4"}) + "\n")
+    output = tmp_path / "failed"
+    original = engine.replay
+
+    def corrupted(*args, **kwargs):
+        result = original(*args, **kwargs)
+        result["scores"]["nci"] += 1.
+        return result
+
+    monkeypatch.setattr(engine, "replay", corrupted)
+    monkeypatch.setattr(sys, "argv", ["ood_repro", "run", "--model", str(tiny_checkpoint), "--task", "gsm8k",
+                                     "--device", "cpu", "--dtype", "float32", "--prompt-mode", "plain",
+                                     "--data-jsonl", str(data), "--ks", "1", "--max-new-tokens", "4",
+                                     "--verify-replay", "1", "--bootstrap", "0", "--output", str(output),
+                                     "--local-files-only"])
+    with pytest.raises(ValueError, match="verification failed"):
+        cli.main()
+    diagnostics = list(output.glob("verification-failure-*.json"))
+    assert len(diagnostics) == 1
+    saved = json.loads(diagnostics[0].read_text(encoding="utf-8"))
+    assert not saved["verification"]["passed"] and saved["verification"]["mode"] == "matched"
+    assert saved["online"]["token_scores"]
+    assert (output / "predictions.jsonl").read_text() == ""

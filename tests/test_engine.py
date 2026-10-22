@@ -21,8 +21,10 @@ def test_online_chunked_replay_and_independent_full_forward(architecture):
     assert check_head(model, prompt) < 1e-6
     online = generate(model, prompt, scorer, max_new_tokens=6, force_length=True, save_tokens=True)
     replayed = replay(model, prompt, online["generated_token_ids"], scorer, chunk_size=2, save_tokens=True)
+    matched = replay(model, prompt, online["generated_token_ids"], scorer, mode="matched", save_tokens=True)
     for k, value in online["scores"].items():
         assert value == pytest.approx(replayed["scores"][k], abs=1e-6, rel=1e-5)
+        assert value == matched["scores"][k]
     # Independent causal alignment check through a single full-sequence forward.
     captured = []
     hook = model.get_output_embeddings().register_forward_pre_hook(lambda module, args: captured.append(args[0].detach()))
@@ -72,3 +74,34 @@ def test_cuda_low_precision_head_and_replay(architecture):
     replayed = replay(model, prompt, online["generated_token_ids"], scorer, chunk_size=2)
     for key, value in online["scores"].items():
         assert value == pytest.approx(replayed["scores"][key], abs=.003, rel=.02)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_bf16_long_prompt_matched_replay_keeps_forward_shapes_and_cache():
+    from transformers import Qwen2Config, Qwen2ForCausalLM
+    from transformers.cache_utils import DynamicCache
+    from ood_repro.verification import compare_online_replay
+    torch.manual_seed(23)
+    config = Qwen2Config(vocab_size=257, hidden_size=64, intermediate_size=128,
+                         num_hidden_layers=6, num_attention_heads=4, num_key_value_heads=2,
+                         max_position_embeddings=1024, attention_dropout=0.)
+    config._attn_implementation = "sdpa"
+    dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+    model = Qwen2ForCausalLM(config).to(device="cuda", dtype=dtype).eval()
+    calls = []
+
+    def capture(module, args, kwargs):
+        calls.append(tuple(kwargs["input_ids"].shape))
+        assert isinstance(kwargs["past_key_values"], DynamicCache)
+
+    hook = model.register_forward_pre_hook(capture, with_kwargs=True)
+    scorer = GeometryScorer(model.get_output_embeddings().weight, ks=(10,))
+    prompt = list(range(1, 201)) * 2
+    online = generate(model, prompt, scorer, max_new_tokens=12, force_length=True, save_tokens=True)
+    online_calls = calls[:]
+    calls.clear()
+    matched = replay(model, prompt, online["generated_token_ids"], scorer, mode="matched", save_tokens=True)
+    hook.remove()
+    assert calls == online_calls == [(1, len(prompt))] + [(1, 1)] * 11
+    report = compare_online_replay(online, matched, rtol=0., atol=0.)
+    assert report["passed"], report

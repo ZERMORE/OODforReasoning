@@ -9,6 +9,12 @@ import torch
 from .scoring import aggregate
 
 
+def new_cache():
+    # Explicit cache objects avoid the deprecated tuple-of-tuples return path.
+    from transformers.cache_utils import DynamicCache
+    return DynamicCache()
+
+
 def synchronize(device):
     if torch.device(device).type == "cuda":
         torch.cuda.synchronize(device)
@@ -56,7 +62,7 @@ def generate(model, prompt_ids, scorer=None, *, max_new_tokens=512, temperature=
     device = model.get_input_embeddings().weight.device
     rng = torch.Generator(device=device).manual_seed(seed)
     tokens, steps, trace = [], [], []
-    past = None
+    past = new_cache()
     current = torch.tensor([prompt_ids], device=device)
     synchronize(device)
     start = time.perf_counter()
@@ -91,16 +97,39 @@ def generate(model, prompt_ids, scorer=None, *, max_new_tokens=512, temperature=
 
 @torch.inference_mode()
 def replay(model, prompt_ids, generated_ids, scorer, *, chunk_size=16, stop_ids=(),
-           include_eos=False, save_tokens=False):
+           include_eos=False, save_tokens=False, mode="chunked"):
     """Feed prompt[:-1], then [prompt[-1], y1,...,y(T-1)] in chunks.
 
     Output position t therefore predicts yt, including the prompt's final state.
-    This is for score correctness, not for measuring online latency.
+    mode=matched uses the SAME full-prompt prefill and single-token decode shapes
+    as online generation. This avoids mistaking BF16 chunk-shape rounding for an
+    alignment bug. mode=chunked is the independent, memory-bounded replay path.
+    Neither mode is for measuring online latency.
     """
     if not prompt_ids or not generated_ids or chunk_size < 1:
         raise ValueError("Empty sequence or invalid replay chunk size")
+    if mode not in {"matched", "chunked"}:
+        raise ValueError(f"Unknown replay mode: {mode}")
     device = model.get_input_embeddings().weight.device
-    past, steps, trace = None, [], []
+    past, steps, trace = new_cache(), [], []
+    if mode == "matched":
+        with head_inputs(model) as state:
+            for t, token in enumerate(generated_ids):
+                # Teacher-forced known tokens; do not regenerate or resample y.
+                ids = prompt_ids if t == 0 else [generated_ids[t - 1]]
+                out = model(input_ids=torch.tensor([ids], device=device), past_key_values=past,
+                            use_cache=True, return_dict=True)
+                if include_eos or token not in stop_ids:
+                    scores = scorer.score(state["z"][0, -1], out.logits[0, -1], token)
+                    steps.append(scores)
+                    if save_tokens:
+                        trace.append({"position": t, "token_id": token, "scores": scores})
+                past = out.past_key_values
+                state.clear()
+                del out
+        for item in trace:
+            item["scores"] = {k: v.item() for k, v in item["scores"].items()}
+        return {"scores": aggregate(steps) if steps else {}, "scored_tokens": len(steps), "token_scores": trace}
     prediction_inputs = [prompt_ids[-1]] + generated_ids[:-1]
     with head_inputs(model) as state:
         if len(prompt_ids) > 1:

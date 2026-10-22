@@ -85,6 +85,7 @@ def run(args):
     from tqdm import tqdm
     from .engine import check_head, eos_ids, generate, replay
     from .scoring import GeometryScorer
+    from .verification import compare_online_replay
     if args.task not in SPECS:
         raise ValueError("--task is required")
     if args.split == "train" and args.limit is None:
@@ -162,32 +163,41 @@ def run(args):
             context_limit = getattr(model.config, "max_position_embeddings", None)
             if context_limit and len(ids) + args.max_new_tokens > context_limit:
                 raise ValueError(f"Prompt + generation exceeds context for {example['sample_id']}")
+            needs_verification = args.score_mode == "online" and verified < args.verify_replay
             generated = generate(model, ids, scorer if args.score_mode == "online" else None,
                                  max_new_tokens=args.max_new_tokens, temperature=args.temperature,
                                  top_p=args.top_p, seed=args.seed + index, stop_ids=stop,
-                                 include_eos=args.include_eos, save_tokens=args.save_token_scores)
+                                 include_eos=args.include_eos, save_tokens=args.save_token_scores or needs_verification)
             verification = None
-            if args.score_mode == "replay" or verified < args.verify_replay:
+            verification_report = None
+            if args.score_mode == "replay" or needs_verification:
+                replay_mode = args.verify_replay_mode if needs_verification else "chunked"
                 replayed = replay(model, ids, generated["generated_token_ids"], scorer,
                                   chunk_size=args.replay_chunk, stop_ids=stop,
-                                  include_eos=args.include_eos, save_tokens=args.save_token_scores)
+                                  include_eos=args.include_eos, save_tokens=args.save_token_scores or needs_verification,
+                                  mode=replay_mode)
                 if args.score_mode == "online":
-                    import math
-                    if generated["scored_tokens"] != replayed["scored_tokens"]:
-                        raise ValueError("Online/replay token counts differ")
-                    differences = {k: abs(v - replayed["scores"][k]) for k, v in generated["scores"].items()}
-                    if any(not math.isclose(v, replayed["scores"][k], rel_tol=args.verify_rtol, abs_tol=args.verify_atol)
-                           for k, v in generated["scores"].items()):
-                        raise ValueError(f"Online/replay scores differ: {differences}")
-                    verification = differences
+                    verification_report = compare_online_replay(generated, replayed, rtol=args.verify_rtol, atol=args.verify_atol)
+                    verification_report["mode"] = replay_mode
+                    if not verification_report["passed"]:
+                        diagnostic = root / f"verification-failure-{digest(example['sample_id'])[:12]}.json"
+                        write_json(diagnostic, {"sample_id": example["sample_id"], "prompt_token_ids": ids,
+                                   "online": generated, "replay": replayed, "verification": verification_report})
+                        raise ValueError(f"Online/replay verification failed ({replay_mode}); diagnostic: {diagnostic}; "
+                                         f"aggregate failures: {verification_report['aggregate_failures']}; "
+                                         f"token failures: {verification_report['token_failure_count']}")
+                    verification = verification_report["aggregate_abs_diff"]
                     verified += 1
                 else:
                     generated.update(replayed)
+            if not args.save_token_scores:
+                generated["token_scores"] = []
             response = tokenizer.decode(generated["generated_token_ids"], skip_special_tokens=True)
             parsed = extract_answer(response, args.task)
             row = {**example, **prompt_meta, **generated, "prompt_token_ids": ids,
                    "response": response, "parsed_answer": parsed, "is_correct": parsed == example["gold_answer"],
                    "sample_seed": args.seed + index, "online_replay_abs_diff": verification,
+                   "online_replay_verification": verification_report,
                    "timing_scope": "generation with scoring" if args.score_mode == "online" else "generation only; excludes replay"}
             stream.write(json.dumps(row, ensure_ascii=False, allow_nan=False) + "\n")
             stream.flush()
@@ -262,6 +272,8 @@ def main():
     runner.add_argument("--save-token-scores", action="store_true")
     runner.add_argument("--replay-chunk", type=int, default=16)
     runner.add_argument("--verify-replay", type=int, default=0)
+    runner.add_argument("--verify-replay-mode", choices=["matched", "chunked"], default="matched",
+                        help="Matched forward shapes for BF16 verification; chunked is an independent numerical diagnostic")
     runner.add_argument("--verify-rtol", type=float, default=0.01)
     runner.add_argument("--verify-atol", type=float, default=0.001)
     runner.add_argument("--bootstrap", type=int, default=2000)

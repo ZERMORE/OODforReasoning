@@ -96,6 +96,36 @@ Ctrl+B 然后 D 脱离会话，`tmux attach -t ood-qwen` 恢复。再次执行�
 
 当前 suite 不执行独立训练集选 k、TruthfulQA、经验均值消融或多样本基线，不把“代码与 tiny 模型测试通过”写成“7B 实验已完成”。
 
+## BF16 在线/重放校验失败后的更新与恢复
+
+旧版本把完整 prompt prefill 的在线路径与分块 prefill 重放直接比较。BF16 下，不同形状的矩阵乘与 attention 可产生不同舍入，因此序列分数可能超过统一容差。此日志本身不能证明 token 对齐错误，也不能直接视为已验证的数值等价。参见 [PyTorch numerical accuracy](https://docs.pytorch.org/docs/stable/notes/numerical_accuracy.html) 与 [Transformers 4.46.3 Cache 文档](https://huggingface.co/docs/transformers/v4.46.3/en/kv_cache)。
+
+修复版默认采用 `--verify-replay-mode matched`：整段 prompt prefill + 单 token 解码的 teacher forcing。每个生成位置与 token ID 逐一检查，原有 `atol=0.001, rtol=0.01` 保留；FP32 独立全序列与分块对齐测试也保留。两条路径使用 `DynamicCache`，避免 tuple-cache 的弃用路径。若再次失败，检查 cell 中新生成的 `verification-failure-*.json`。
+
+更新后实现 hash 与配置字段均变化，**不要向旧 smoke/main 目录强行续写**。建议使用新实验名，保留旧的一题预测作为诊断。以下模型 commit 来自本次用户服务器日志：
+
+```bash
+conda activate ood-repro
+cd ~/projects/OODmethod  # 或你的实际 checkout
+git pull --ff-only origin codex/ood-reproduction
+python -m pip install -e . --no-deps
+
+bash scripts/run_qwen.sh prepare \
+  --name qwen25-paper-v4-matched \
+  --model-revision a09a35458c702b33eeacc393d103063234e8bc28
+
+CUDA_VISIBLE_DEVICES=2 bash scripts/run_qwen.sh smoke \
+  --name qwen25-paper-v4-matched
+
+# smoke 完成并检查结果后
+CUDA_VISIBLE_DEVICES=2 bash scripts/run_qwen.sh main \
+  --name qwen25-paper-v4-matched
+```
+
+model commit 目录与已有下载一致，prepare 可复用权重；数据仍会解析固定版本并记录在新 recipe。默认存储根目录依旧为 `/mnt/data/wxh/wdl`。不需要删除旧结果、重新申请模型权限或升级 Transformers。恢复后仍需实际服务器 7B smoke 验证，不能用本地 tiny 测试替代。
+
+修复本地验证：38 项测试分两组通过（13 项引擎/校验/CLI + 25 项评分/协议/Qwen suite）。新增 400-token prompt 的 CUDA BF16 Qwen2 回归测试，严格验证 online 与 matched replay 的调用形状一致，并在 rtol=0、atol=0 时逐 token 通过；另测试均值抵消不能掩盖逐 token 错误、错位必须失败、失败诊断完整落盘。
+
 ## 本地验证与执行状态
 
 2026-10-22：原有 25 项核心/CLI/CUDA tiny 模型测试通过；新增 7 项 Qwen 准备、固定版本复用、三任务调度、结果比例换算、完整 split 检查和权重分片完整性测试通过。新增准备/调度测试采用明确的合成 fixture，不联网下载完整模型；Bash 入口通过语法检查。
