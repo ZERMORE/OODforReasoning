@@ -13,3 +13,4 @@ models/
 *.egg-info/
 build/
 dist/
+analysis_outputs/

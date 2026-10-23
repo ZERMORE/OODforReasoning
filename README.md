@@ -10,6 +10,8 @@
 
 **等待 Llama 审核时，可先执行 [Qwen 7B 服务器流程](docs/QWEN_SERVER.md)**：`bash scripts/run_qwen.sh prepare` → `smoke` → `main`。入口只运行 Qwen 三任务，模型与数据固定到 commit，结果与缓存默认位于 `/mnt/data/wxh/wdl`。
 
+实验完成后可使用 [结果审计与可视化](docs/RESULTS_ANALYSIS.md)：安装 `requirements-viz.txt`，运行 `python -m ood_repro.visualize --results <结果目录> --output <新的图表目录>`，自动生成中文报告、配对统计及六组 PNG/SVG，无需 GPU。
+
 ## 1. 服务器安装
 
 建议 Linux、Python 3.10/3.11、单张 24 GB GPU，batch size 固定为 1。24 GB 是工程预算，实际用量由上下文和评分配置决定。先运行小样本，再扩大任务。默认不量化，不进行模型训练。
