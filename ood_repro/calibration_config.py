@@ -13,6 +13,7 @@ def main():
     parser.add_argument("--run-output", required=True, help="New raw calibration run directory")
     parser.add_argument("--limit", type=int, default=200)
     parser.add_argument("--seed", type=int, default=1729)
+    parser.add_argument("--save-token-scores", action="store_true", help="Retain online scores for eval2, avoiding a second model pass")
     args = parser.parse_args()
     source, output = independent_output(args.source, args.output)
     _, run_output = independent_output(source, args.run_output)
@@ -23,7 +24,7 @@ def main():
         parser.error("Source should be the existing evaluation run")
     config = dict(manifest["config"])
     config.update(split="train", limit=args.limit, seed=args.seed, data_jsonl=None, k_selection=None,
-                  output=str(run_output), bootstrap=0, resume=True, save_token_scores=False)
+                  output=str(run_output), bootstrap=0, resume=True, save_token_scores=args.save_token_scores)
     output.mkdir(parents=True, exist_ok=True)
     write_json(output / "config.json", config)
     print(f"python -m ood_repro run --config {output / 'config.json'}")

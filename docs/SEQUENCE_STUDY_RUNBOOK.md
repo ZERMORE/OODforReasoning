@@ -2,7 +2,7 @@
 
 本次已实现：逐 token 全指标回放、E1 聚合消融、E2 顺序控制、E3 标注准备/位置分析、E4 人工核验后的三分支续写与行为/置信度曲线。尚未运行服务器完整实验，不提供估计实验成绩。
 
-E3/E4 需要人工确认过程错误/正确步骤和语义编辑；没有标签时程序会拒绝执行依赖标签的分析。未实现的研究扩展包括监督 RNN/CNN、自动语义步骤标注、E3 长度匹配控制、E4 等效恢复检验及基于机制标签的阈值漏检分析；因此先运行 E1/E2。完整设计见 [SEQUENCE_AGGREGATION_PLAN.md](SEQUENCE_AGGREGATION_PLAN.md)。
+E3/E4 需要人工确认过程错误/正确步骤和语义编辑；没有标签时程序会拒绝执行依赖标签的分析。本指引保留原入口；新增监督 GRU/CNN/Attention 和长度匹配首错分析见 [EVAL_SECTION2.md](EVAL_SECTION2.md)。自动语义步骤标注、E4 等效恢复检验及基于机制标签的阈值漏检分析尚未实现。完整设计见 [SEQUENCE_AGGREGATION_PLAN.md](SEQUENCE_AGGREGATION_PLAN.md)。
 
 ## 1. 同步代码
 

@@ -4,6 +4,8 @@
 
 序列实验：[E1/E2 聚合与顺序对照、E3 首错标注、E4 前缀干预的执行步骤](docs/SEQUENCE_STUDY_RUNBOOK.md)。
 
+Eval section 2：[首错位置实验＋GRU/CNN/Attention 与无序监督聚合对照](docs/EVAL_SECTION2.md)。
+
 复现 Liu et al., **From Out-of-Distribution Detection to Hallucination Detection: A Geometric View**, arXiv:2602.07253v4（2026-06-04，ICML 2026）。
 
 - [原论文](https://arxiv.org/abs/2602.07253v4)；公式与实现边界见 [理论说明](docs/theory.md)。
