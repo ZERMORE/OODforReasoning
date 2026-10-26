@@ -41,6 +41,14 @@ python -m ood_repro.visualize \
 
 图表使用英文标签，避免跨平台中文字体缺失；报告为中文。置信分布对每个正确性类别分别归一化，不混淆类别频数。风险覆盖曲线在同分时只按完整阈值组保留，避免题目顺序制造优势；同时提供完整范围和 coverage≥20% 的明确放大视图，不裁掉极低覆盖率下的高风险。
 
+## 论文式完整主表
+
+```bash
+python -m ood_repro.main_table --results <结果根目录> --output <新的表格目录>
+```
+
+输出 `main_results.png/svg/md/csv/tex/json`，以及含95% CI 的 `main_results_with_ci.png/svg/md`。主表覆盖全部实际运行评分；灰色突出几何方法，粗体标最高点值，下划线标第二个不同点值，等值并列（按未舍入值排名）。selected-k 行按论文的 100/All/100 复用已测结果；NCI decoded 在 greedy 下复用同分，不是独立实验。GSM8K 的 k100 未运行，保留缺失。导出前会重新核验全部诊断分数的 AUROC。LaTeX 片段需要 booktabs 与 multirow 宏包。排名不代表配对统计显著性。
+
 ## 方法与约束
 
 1. 核验三个官方 split 题数、唯一问题 ID、输入内容 hash、严格答案抽取、标签、评分有限性、保存的准确率/失败率及 AUROC。核验同一实现 hash、recipe 模型和数据 revision、已执行的重放检查。
@@ -60,3 +68,7 @@ python -m ood_repro.visualize \
 - AQuA：selected fDBD 71.67（论文78.22），比 PPL +2.45 点，CI [−2.55,+7.52]；有7个抽取失败，其中6个截断。排除这7题的描述性分数为74.73，仍未达到论文点值，且不能替代完整集成绩。
 
 因此应描述为：**CSQA/GSM8K 复现主要趋势，逐项数值未完全复现；AQuA 的差距需要优先检查生成协议，几何分数超越 margin 的独立价值仍需验证。** 不应把本次结果称为“所有任务都成功复现”或“几何分数总是最优”。
+
+## DeepConf 追加对照
+
+新增 top-20 token confidence 的离线回放脚本及主表支持。补算、日志与导出命令见 [DEEPCONF_COMPARISON.md](DEEPCONF_COMPARISON.md)。原结果不包含 top-20 log 概率，需要服务器读取相同 checkpoint 对既有 token 序列补算。

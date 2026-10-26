@@ -1,5 +1,9 @@
 # OODmethod：几何幻觉检测独立复现
 
+追加实验：[DeepConf top-20 置信度对照：服务器回放、后台日志与完整主表](docs/DEEPCONF_COMPARISON.md)。
+
+序列实验：[E1/E2 聚合与顺序对照、E3 首错标注、E4 前缀干预的执行步骤](docs/SEQUENCE_STUDY_RUNBOOK.md)。
+
 复现 Liu et al., **From Out-of-Distribution Detection to Hallucination Detection: A Geometric View**, arXiv:2602.07253v4（2026-06-04，ICML 2026）。
 
 - [原论文](https://arxiv.org/abs/2602.07253v4)；公式与实现边界见 [理论说明](docs/theory.md)。
