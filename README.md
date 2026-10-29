@@ -192,6 +192,8 @@ docs/                    # 理论与协议边界
 
 Git 忽略 `.venv/`、缓存、模型、数据、运行结果及 ZIP，跨服务器同步时只需代码与配置。运行结果应单独备份，不要仅依赖 Git。代码本身不启动下载完整模型的实验。
 
+实验1可使用 `deepseek-v4-pro` API 自动定位首次错误，复用已有轨迹，无需 GPU。支持精确原文到 token 映射、断点续跑、原始响应与来源记录；结果明确标注为自动判定。服务器操作见 [DeepSeek 自动首次错误定位](docs/experiment1-deepseek.md)。
+
 ## 9. 本地验证记录
 
 2026-10-22：**25 项测试通过**。环境为 Windows、Python 3.11、PyTorch 2.3.0+cu121、Transformers 4.46.3；包括随机 tiny Llama/Qwen2 的 CPU 对齐测试、RTX 3060 Laptop GPU 上的 BF16/SDPA 对齐测试，以及本地 checkpoint 的 CLI/续跑/benchmark 测试。

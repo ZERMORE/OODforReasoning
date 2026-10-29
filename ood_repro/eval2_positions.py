@@ -166,7 +166,22 @@ def main():
     if output.exists() and any(output.iterdir()):
         parser.error("New empty output required")
     partitions, test, split = load_study(args.pool, args.test, args.split)
-    result = analyze(test, partitions["calibration"], read_jsonl(args.annotations), args.metrics.split(","), args.aggregations.split(","), args.bootstrap)
+    annotations = read_jsonl(args.annotations)
+    judge_path = Path(args.annotations).parent / "judge-manifest.json"
+    judge = None
+    if judge_path.exists():
+        judge = json.loads(judge_path.read_text(encoding="utf-8"))
+        if not judge.get("complete") or judge.get("annotations_sha256") != file_hash(args.annotations):
+            raise ValueError("API annotations are incomplete or their hash differs from the judge manifest")
+        if judge["settings"]["source_sha256"] != file_hash(Path(args.test) / "predictions.jsonl"):
+            raise ValueError("API judge source differs from experiment1 test replay")
+    auto_n = sum(a.get("annotation_kind") == "llm_auto" for a in annotations)
+    if auto_n and judge is None:
+        raise ValueError("Automatic annotations require their original sibling judge-manifest.json")
+    result = analyze(test, partitions["calibration"], annotations, args.metrics.split(","), args.aggregations.split(","), args.bootstrap)
+    result["annotation_provenance"] = {"automatic_n": auto_n, "other_n": len(annotations)-auto_n, "judge": judge}
+    if auto_n:
+        result["notes"].append("LLM automatic process judgments, not human ground truth. CIs exclude judge errors; quote start is an operational location, not a causal origin.")
     output.mkdir(parents=True, exist_ok=True)
     write_json(output / "experiment1.json", {**result, "config": vars(args), "split": split,
                                            "annotations_sha256": file_hash(args.annotations)})
@@ -182,6 +197,8 @@ def main():
              f"Final errors: {result['final_errors']}; located: {result['located_final_errors']}; unlocated: {result['unlocated_final_errors']}.", "",
              "|Metric|Aggregation|First-error bucket|Errors|TPR % [95% CI]|Length-matched AUROC x100 [95% CI]|",
              "|---|---|---:|---:|---:|---:|"]
+    if auto_n:
+        lines[2:2] = [f"Automatic LLM annotations: {auto_n}; NOT human verified. Confidence intervals do not include judge uncertainty.", ""]
     for record in result["records"]:
         for b in record["buckets"]:
             tpr = "—" if "tpr" not in b else f"{100*b['tpr']:.2f} [{100*b['tpr_ci95'][0]:.2f}, {100*b['tpr_ci95'][1]:.2f}]"

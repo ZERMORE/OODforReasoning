@@ -18,6 +18,12 @@ case "$phase" in
   annotations)
     exec python -u -m ood_repro.eval2 prepare-annotations --test "$TEST_REPLAY" --output "$EVAL2_ROOT/annotations-template"
     ;;
+  auto-annotations)
+    exec python -u -m ood_repro.auto_positions --test "$TEST_REPLAY" \
+      --output "${JUDGE_OUTPUT:-$EVAL2_ROOT/annotations-deepseek-v4-pro}" \
+      --model "${JUDGE_MODEL:-deepseek-v4-pro}" --max-tokens "${JUDGE_MAX_TOKENS:-8192}" \
+      --thinking "${JUDGE_THINKING:-enabled}" "${@:2}"
+    ;;
   pool-config)
     exec python -u -m ood_repro.calibration_config --source "$ORIGINAL_RUN" \
       --output "$EVAL2_ROOT/pool/config" --run-output "$EVAL2_ROOT/pool/raw" --limit "${POOL_LIMIT:-2400}" --save-token-scores
@@ -41,5 +47,5 @@ case "$phase" in
       --device "${FIT_DEVICE:-cpu}" --epochs "${EPOCHS:-30}" --seeds "${SEEDS:-0,1,2}" \
       --bootstrap "${BOOTSTRAP:-2000}" --resume
     ;;
-  *) echo 'Usage: bash scripts/run_eval2.sh {annotations|pool-config|pool|split|experiment1|experiment2}' ;;
+  *) echo 'Usage: bash scripts/run_eval2.sh {annotations|auto-annotations|pool-config|pool|split|experiment1|experiment2}' ;;
 esac
