@@ -34,6 +34,21 @@ def test_exact_utf8_alignment_and_quote_boundaries():
         module.byte_alignment(row)
 
 
+def test_key_file_and_environment_override(tmp_path, monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    path = tmp_path / "key.json"
+    assert module.load_api_key(path) == ""
+    path.write_text('{"api_key": " file-secret "}', encoding="utf-8-sig")
+    assert module.load_api_key(path) == "file-secret"
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "env-secret")
+    assert module.load_api_key(path) == "env-secret"
+    monkeypatch.delenv("DEEPSEEK_API_KEY")
+    path.write_text('invalid-secret-content')
+    with pytest.raises(ValueError) as exc:
+        module.load_api_key(path)
+    assert "invalid-secret-content" not in str(exc.value)
+
+
 def test_ambiguous_quote_and_invalid_judgments_are_rejected():
     row = make_row("2 + 2 = 5; 2 + 2 = 5")
     spans = module.byte_alignment(row)

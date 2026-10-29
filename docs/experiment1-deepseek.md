@@ -52,7 +52,27 @@ bash scripts/run_eval2.sh auto-annotations --dry-run
 /mnt/data/wxh/wdl/results/OODmethod/eval-section2-v1/annotations-deepseek-v4-pro
 ```
 
-在当前服务器终端安全输入 API key，不会显示输入内容，也不把实际 key 写进 shell 历史：
+默认从仓库的 `configs/deepseek.local.json` 读取 key。该文件已加入 Git 忽略规则，本地已创建空文件。填入：
+
+```json
+{
+  "api_key": "你的DeepSeek API key"
+}
+```
+
+代码通过 Git 同步时不会上传这个文件，须单独传到服务器同一路径；也可直接在服务器创建并编辑：
+
+```bash
+cp -n configs/deepseek.example.json configs/deepseek.local.json
+chmod 600 configs/deepseek.local.json
+nano configs/deepseek.local.json
+```
+
+保存后直接执行试跑/后台命令即可，不再需要每次输入 key。`nano` 用 `Ctrl+O`、回车保存，`Ctrl+X` 退出。程序读取 JSON，不执行文件中的任何 shell 命令。
+
+环境变量 `DEEPSEEK_API_KEY` 优先于文件；如需确保使用文件，先执行 `unset DEEPSEEK_API_KEY`。自定义文件可传 `bash scripts/run_eval2.sh auto-annotations --api-key-file /绝对路径/key.json`。不要将带 key 的文件提交到 Git。
+
+也可选择只使用当前会话环境变量：
 
 ```bash
 read -rsp 'DeepSeek API key: ' DEEPSEEK_API_KEY
@@ -60,7 +80,7 @@ echo
 export DEEPSEEK_API_KEY
 ```
 
-不能只设置 Hugging Face token；这里需要 DeepSeek 平台 API key。新 SSH 会话需要重新执行上述输入。已经由 nohup 启动的子进程会继承 key，断开 SSH 后仍可运行。
+不能只设置 Hugging Face token；这里需要 DeepSeek 平台 API key。采用文件方式时新 SSH 会话会自动读取文件；采用环境变量方式时需要重新输入。已经由 nohup 启动的子进程会继承 key，断开 SSH 后仍可运行。密钥不进入实验 manifest、请求示例或日志。
 
 ## 试跑 2 条
 

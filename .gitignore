@@ -10,6 +10,7 @@ models/
 *.safetensors
 *.bin
 .env
+configs/deepseek.local.json
 *.egg-info/
 build/
 dist/

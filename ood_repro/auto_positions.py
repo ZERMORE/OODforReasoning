@@ -149,12 +149,32 @@ def call_api(body, key, base_url, timeout):
         return json.load(response)
 
 
+def load_api_key(path):
+    """Environment override, otherwise a local JSON file; never serialize credentials."""
+    key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+    if key:
+        return key
+    path = Path(path)
+    if not path.exists():
+        return ""
+    try:
+        config = json.loads(path.read_text(encoding="utf-8-sig"))
+        key = config.get("api_key", "")
+        if not isinstance(key, str):
+            raise ValueError()
+    except (ValueError, AttributeError):
+        raise ValueError("Key file must be a JSON object with a string api_key; contents not logged") from None
+    return key.strip()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--test", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--model", default="deepseek-v4-pro")
     parser.add_argument("--base-url", default="https://api.deepseek.com")
+    parser.add_argument("--api-key-file", default=str(Path(__file__).resolve().parents[1] / "configs" / "deepseek.local.json"),
+                        help="Local JSON file containing api_key; DEEPSEEK_API_KEY overrides it")
     parser.add_argument("--thinking", choices=["enabled", "disabled"], default="enabled")
     parser.add_argument("--max-tokens", type=int, default=8192)
     parser.add_argument("--timeout", type=float, default=300)
@@ -230,9 +250,9 @@ def main():
         write_json(output / "example-request.json", payload(selected[0], args.model, args.max_tokens, args.thinking))
         print(f"Dry run OK: exact token alignment checked; no API calls. {output}")
         return
-    key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+    key = load_api_key(args.api_key_file)
     if len(completed) < len(selected) and not key:
-        parser.error("Set DEEPSEEK_API_KEY in the server environment; do not put it in code")
+        parser.error("Fill api_key in configs/deepseek.local.json (or --api-key-file), or set DEEPSEEK_API_KEY")
     pending = [r for r in selected if r["sample_id"] not in completed]
     if args.limit:
         pending = pending[:args.limit]
