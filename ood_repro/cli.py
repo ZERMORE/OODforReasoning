@@ -93,7 +93,8 @@ def run(args):
     pack = load_pack(args.task, args.prompt_file)
     demo_questions = [item["question"].split("\nAnswer Choices:")[0] for item in pack["examples"]] if args.split == "train" else []
     examples, dataset_meta = load_examples(args.task, args.split, args.data_jsonl,
-                                           args.dataset_revision, args.limit, args.seed, args.split == "train", demo_questions)
+                                           args.dataset_revision, args.limit, args.seed,
+                                           args.split == "train" or getattr(args, "shuffle_questions", False), demo_questions)
     if not examples:
         raise ValueError("No examples")
     ks = parse_ks(args.ks)
@@ -116,6 +117,8 @@ def run(args):
     config = {k: v for k, v in vars(args).items() if k not in {"resume", "output", "config", "bootstrap", "command"}}
     if not config.get("shannon"):
         config.pop("shannon", None)
+    if not config.get("shuffle_questions"):
+        config.pop("shuffle_questions", None)
     signature = digest({"config": config, "dataset": dataset_meta, "pack": pack, "ks": ks, "selection": selection})
     root = Path(args.output)
     manifest_path, prediction_path = root / "manifest.json", root / "predictions.jsonl"
@@ -274,6 +277,7 @@ def main():
     runner.add_argument("--temperature", type=float, default=0.0)
     runner.add_argument("--top-p", type=float, default=1.0)
     runner.add_argument("--seed", type=int, default=0)
+    runner.add_argument("--shuffle-questions", action="store_true", help="Shuffle dataset rows before applying --limit, using --seed")
     runner.add_argument("--include-eos", action="store_true")
     runner.add_argument("--save-token-scores", action="store_true")
     runner.add_argument("--shannon", action="store_true", help="Also score top-20 negative Shannon entropy")

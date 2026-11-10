@@ -5,8 +5,10 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 phase="${1:-help}"
 task="${2:-gsm8k}"
 data_root="${DATA_ROOT:-/mnt/data/wxh/wdl}"
-root="${EVIDENCE_ROOT:-$data_root/results/OODmethod/evidence-crossover-v1}"
 old="$data_root/results/OODmethod"
+default_root="$old/evidence-crossover-v1"
+if [[ "$task" == math ]]; then default_root="$old/evidence-math-half-v1"; fi
+root="${EVIDENCE_ROOT:-$default_root}"
 cell="$root/$task"
 
 case "$phase:$task" in
@@ -39,12 +41,11 @@ PY
     common=(--task math --model "$MODEL_PATH" --model-revision "$MODEL_REVISION"
       --tokenizer-revision "$MODEL_REVISION" --dataset-revision "$MATH_REVISION" --local-files-only
       --ks all --shannon --save-token-scores --resume --bootstrap 0 --max-new-tokens "${MAX_TOKENS:-2048}")
-    test_limit=()
-    if [[ -n "${TEST_LIMIT:-}" ]]; then test_limit=(--limit "$TEST_LIMIT"); fi
+    sample_seed="${SAMPLE_SEED:-1729}"
     python -u -m ood_repro run "${common[@]}" --split test --data-jsonl "$MATH_DATA/test.jsonl" \
-      "${test_limit[@]}" --output "$cell/test-raw"
+      --shuffle-questions --seed "$sample_seed" --limit "${TEST_LIMIT:-2500}" --output "$cell/test-raw"
     python -u -m ood_repro run "${common[@]}" --split train --data-jsonl "$MATH_DATA/train.jsonl" \
-      --limit "${POOL_LIMIT:-2400}" --seed 1729 --output "$cell/pool-raw"
+      --limit "${POOL_LIMIT:-1200}" --seed "$sample_seed" --output "$cell/pool-raw"
     for part in test pool; do
       python -u -m ood_repro.eval2 import-online --test "$cell/$part-raw" --output "$cell/$part" --resume
     done

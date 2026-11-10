@@ -5,7 +5,7 @@
 | 数据 | 测试轨迹 | GRU 与阈值的数据 |
 |---|---:|---|
 | GSM8K | 复用 1,319 条 Qwen2.5-7B-Instruct 轨迹 | 复用 2,400 条原训练池轨迹，冻结 1,680 / 360 / 360 划分 |
-| MATH | 七个题型完整 test，计划生成 5,000 条 | 从原始 train 固定种子取 2,400 题，生成后按题目组划分 70% / 15% / 15% |
+| MATH 半量 | 从完整 test 固定种子抽取 2,500 题 | 从合格 train 固定种子抽取 1,200 题，生成后按题目组划分 70% / 15% / 15% |
 
 每题生成一次。GSM8K 回放补算负熵并审计旧分数。MATH 使用同一 Qwen2.5 checkpoint，zero-shot、greedy、上限 2,048 token。生成时同时保存三个信号。题目自带参考答案，轨迹标签来自最终答案比较。GSM8K 沿用既有判分。MATH 抽取最后一个盒中答案，先精确比较，再用 Math-Verify 检查符号等价。抽取失败与无法判分按错答计，另报原因和截断数。正式 Linux 判分每次解析或比较的超时为 5 秒。已有 GSM8K 参考标签争议应在结果解释中保留。
 
@@ -47,6 +47,8 @@ bash scripts/run_evidence.sh fit math
 ```
 
 GPU 阶段为 `replay` 和 `generate`。长任务可用 `nohup` 和独立日志。`FIT_DEVICE=cuda` 可加速长序列 GRU。每个输出目录同一时间只运行一个进程。继续运行时保留相同配置、代码和结果目录。默认结果根目录 `/mnt/data/wxh/wdl/results/OODmethod/evidence-crossover-v1`。其中 `<task>/fit/` 保存 AUROC 与配对区间、AP、AURC、逐题分数、阈值结果、ECDF 和风险—覆盖率图。
+
+MATH 半量实验默认写入 `/mnt/data/wxh/wdl/results/OODmethod/evidence-math-half-v1`。启动前如沿用旧终端，请更新已导出的 `EVIDENCE_ROOT`、`TEST_LIMIT` 和 `POOL_LIMIT`。测试与训练抽样种子默认为 `1729`（可通过 `SAMPLE_SEED` 设置）。抽样改变的是题目选择，各轨迹仍按原始 token 顺序评分。结果需标明是 MATH 随机子集。若另跑全量测试，显式设置 `TEST_LIMIT=5000 POOL_LIMIT=2400` 并指定新的输出根目录。
 
 ## 论文对照
 
