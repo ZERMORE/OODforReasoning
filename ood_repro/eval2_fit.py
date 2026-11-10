@@ -231,7 +231,7 @@ def main():
     for metric in args.metrics.split(","):
         arrays = {name: sequences(rows, metric) for name, rows in {**partitions, "test": test}.items()}
         if args.evidence_study:
-            from .evidence import fixed_scores, detection_summary, evidence_drop
+            from .evidence import fixed_scores, detection_summary
             fixed, drop_positions[metric] = fixed_scores(arrays["test"])
             calibration_fixed, _ = fixed_scores(arrays["calibration"])
             for aggregation, confidence in fixed.items():
@@ -239,9 +239,6 @@ def main():
                 models[name] = {"fixed": confidence}
                 evidence_metrics[name] = {"fixed": detection_summary(test_errors, confidence,
                                                        errors["calibration"], calibration_fixed[aggregation])}
-            order_rng = np.random.default_rng(1729)
-            models[metric + "/evidence_drop_test_shuffle"] = {"fixed": -np.array([
-                evidence_drop(order_rng.permutation(x[:, 0]))[0] for x in arrays["test"]])}
         else:
             for aggregation in ("mean", "min", "quantile10", "token_bottom10", "head_weighted", "tail_weighted", "lowest_w64"):
                 name = metric + "/" + aggregation
@@ -281,7 +278,7 @@ def main():
                         mode = "shuffle" if kind == "gru_shuffled" else "original"
                         confidence = predict(model, arrays["test"], norm, args.device, args.batch_size, mode, seed + 20000)
                         calibration = predict(model, arrays["calibration"], norm, args.device, args.batch_size, mode, seed + 20000)
-                        if kind in {"gru", "cnn", "attention"}:
+                        if not args.evidence_study and kind in {"gru", "cnn", "attention"}:
                             saved["test_controls"] = {control: predict(model, arrays["test"], norm, args.device, args.batch_size,
                                                                       control, seed + 20000).tolist() for control in ("shuffle", "reverse")}
                     threshold = float(np.quantile(calibration[errors["calibration"] == 0], .05))

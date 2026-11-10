@@ -13,7 +13,7 @@
 
 - Shannon 在原始 logits 的 top-20 内做 softmax，计算 $\sum p\log p$。Drop 对置信度做 EMA（span 5），求相邻下降的严重度，取最大五次的平均。少于五次按实际下降数计，无下降风险为零。保存下降的右端 token。公开 `LN_E_drop` 先做累计平均，作为另一种实现记录。主实验采用论文 Eq. 9–12 的原始证据序列。[论文](https://proceedings.mlr.press/v306/chen26n.html) · [公开实现](https://github.com/QJ0114/evidence-drop/blob/main/uncertainty_estimation/utils/metrics.py)
 - GRU 对每种信号分别训练。复用已有单层 GRU 和长度特征，hidden 16、AdamW、30 epoch、三个种子，以验证 AUROC 选 checkpoint，标准化只拟合训练数据。汇总各 seed 的 AUROC，置信区间按测试题配对重采样。单独保存 seed 波动。
-- AUROC 为主，答错为正类。AP 与 AURC 补充。比较同信号 Drop 对 Mean、固定聚合下 Shannon 对几何信号，以及两种信号的 Drop 增益差。附加对照包括长度基线、长度分层、Drop 和 GRU 的测试乱序，以及 GRU 反序。乱序检验分数对顺序的依赖。
+- AUROC 为主，答错为正类。AP 与 AURC 补充。比较同信号 Drop 对 Mean、固定聚合下 Shannon 对几何信号，以及两种信号的 Drop 增益差。附加对照包括长度基线和长度分层。所有聚合均使用原始 token 顺序。
 - 固定轨迹的生成 accuracy 是数据背景。拒答实验报告 selective accuracy、coverage、错答接受率与正确答案误拒率。阈值只从校准集取得。采用错答风险低尾 cutoff，边界并列一律拒绝。论文文字的 $(1-\alpha)$ 分位数与高风险拒绝约定存在方向歧义，代码记录实际规则与实测比例。经验分位数只描述本次校准，额外的有限样本保证需另行实现。
 
 ## 运行顺序

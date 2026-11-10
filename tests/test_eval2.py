@@ -145,6 +145,9 @@ def test_evidence_crossover_cli(dataset, tmp_path, monkeypatch):
     assert len(metrics["combinations"]) == 15
     assert (output / "ecdf.png").exists() and (output / "risk_coverage.png").exists()
     report = json.loads((output / "experiment2.json").read_text())
+    assert {r["method"] for r in report["records"]} == {
+        "mean", "token_bottom10", "lowest_w64", "evidence_drop", "gru", "length_only",
+    }
     drop = next(r for r in report["records"] if r["metric"] == "nci" and r["method"] == "evidence_drop")
     assert "shannon_minus_geometry_drop_gain" in drop["cross_signal"]
 
