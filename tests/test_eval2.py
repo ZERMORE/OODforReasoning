@@ -23,7 +23,8 @@ def dataset(tmp_path):
         for i in range(count):
             correct = bool(i % 2)
             values = rng.normal(1. if correct else 0., .5, size=8 + i % 7)
-            tokens = [{"position": j, "token_id": 1, "scores": {"fdbd_all": float(v), "nci": float(v+.1)}} for j, v in enumerate(values)]
+            tokens = [{"position": j, "token_id": 1, "scores": {"fdbd_all": float(v), "nci": float(v+.1),
+                       "shannon_top20": float(-np.exp(-v))}} for j, v in enumerate(values)]
             scores = {key: float(np.mean([t["scores"][key] for t in tokens])) for key in tokens[0]["scores"]}
             source = {"sample_id": f"{name}:{i}", "question": f"{name} question {i}", "is_correct": correct,
                       "generated_token_ids": [1]*len(tokens), "scored_tokens": len(tokens), "response": "answer", "gold_answer": "1",
@@ -130,6 +131,22 @@ def test_preparation_and_experiment1_cli(dataset, tmp_path, monkeypatch):
         "--annotations", str(reviewed), "--output", str(output), "--metrics", "fdbd_all", "--aggregations", "mean", "--bootstrap", "20"])
     positions.main()
     assert (output / "experiment1.png").exists() and (output / "positions.csv").exists()
+
+
+def test_evidence_crossover_cli(dataset, tmp_path, monkeypatch):
+    from ood_repro.eval2_fit import main
+    pool, test, split, _, _ = dataset
+    output = tmp_path / "evidence"
+    monkeypatch.setattr(sys, "argv", ["fit", "--evidence-study", "--pool", str(pool), "--test", str(test),
+        "--split", str(split), "--output", str(output), "--seeds", "0", "--epochs", "1", "--hidden", "4",
+        "--min-train-errors", "2", "--bootstrap", "20"])
+    main()
+    metrics = json.loads((output / "evidence_metrics.json").read_text())
+    assert len(metrics["combinations"]) == 15
+    assert (output / "ecdf.png").exists() and (output / "risk_coverage.png").exists()
+    report = json.loads((output / "experiment2.json").read_text())
+    drop = next(r for r in report["records"] if r["metric"] == "nci" and r["method"] == "evidence_drop")
+    assert "shannon_minus_geometry_drop_gain" in drop["cross_signal"]
 
 
 def test_online_import_avoids_second_model_pass_and_validates_saved_tokens(dataset, tmp_path, monkeypatch):

@@ -21,6 +21,7 @@ def main():
     parser.add_argument("--seed", type=int, default=1729)
     parser.add_argument("--correct-count", type=int, help="Default: review as many final-correct as final-error cases")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--preserve-split", help="Reuse an earlier split's membership with new replay hashes")
     args = parser.parse_args()
     source, output = independent_output(args.test, args.output)
     if args.command == "import-online":
@@ -70,6 +71,10 @@ def main():
         if pool_manifest["source_manifest"]["dataset"]["split"] != "train" or manifest["source_manifest"]["dataset"]["split"] == "train":
             raise ValueError("Use a train pool and held-out test replay")
         ids = build_split(pool, rows, args.seed)
+        if args.preserve_split:
+            previous = json.loads(Path(args.preserve_split).read_text(encoding="utf-8"))
+            if ids != previous["ids"] or previous["test_ids"] != [r["sample_id"] for r in rows]:
+                raise ValueError("Replayed split membership differs from the previous protocol")
         lookup = {r["sample_id"]: r for r in pool}
         output.mkdir(parents=True, exist_ok=True)
         write_json(output / "splits.json", {"schema": 1, "seed": args.seed, "ids": ids,

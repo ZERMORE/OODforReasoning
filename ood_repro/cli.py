@@ -8,7 +8,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .data import SPECS, digest, extract_answer, load_examples
+from .data import SPECS, digest, extract_answer, grade_math, load_examples
 from .evaluation import evaluate, read_jsonl, select_k
 from .prompting import build_prompt, load_pack
 
@@ -114,6 +114,8 @@ def run(args):
             raise ValueError("Calibration and evaluation questions overlap")
         ks = (selection["selected_k"],)
     config = {k: v for k, v in vars(args).items() if k not in {"resume", "output", "config", "bootstrap", "command"}}
+    if not config.get("shannon"):
+        config.pop("shannon", None)
     signature = digest({"config": config, "dataset": dataset_meta, "pack": pack, "ks": ks, "selection": selection})
     root = Path(args.output)
     manifest_path, prediction_path = root / "manifest.json", root / "predictions.jsonl"
@@ -142,6 +144,8 @@ def run(args):
                 raise ValueError(f"Resume environment mismatch: {key}")
     head = model.get_output_embeddings()
     scorer = GeometryScorer(head.weight, getattr(head, "bias", None), ks, args.vocab_chunk)
+    if getattr(args, "shannon", False):
+        scorer.metrics.add("shannon_top20")
     stop = eos_ids(model, tokenizer)
     first_text, first_ids, _ = build_prompt(tokenizer, examples[0], args.task, pack, args.prompt_mode)
     head_error = check_head(model, first_ids)
@@ -199,6 +203,8 @@ def run(args):
                    "sample_seed": args.seed + index, "online_replay_abs_diff": verification,
                    "online_replay_verification": verification_report,
                    "timing_scope": "generation with scoring" if args.score_mode == "online" else "generation only; excludes replay"}
+            if args.task == "math":
+                row["is_correct"], row["math_grade_status"] = grade_math(parsed, example["gold_answer"])
             stream.write(json.dumps(row, ensure_ascii=False, allow_nan=False) + "\n")
             stream.flush()
     report = evaluate(read_jsonl(prediction_path), args.bootstrap, args.seed)
@@ -270,6 +276,7 @@ def main():
     runner.add_argument("--seed", type=int, default=0)
     runner.add_argument("--include-eos", action="store_true")
     runner.add_argument("--save-token-scores", action="store_true")
+    runner.add_argument("--shannon", action="store_true", help="Also score top-20 negative Shannon entropy")
     runner.add_argument("--replay-chunk", type=int, default=16)
     runner.add_argument("--verify-replay", type=int, default=0)
     runner.add_argument("--verify-replay-mode", choices=["matched", "chunked"], default="matched",

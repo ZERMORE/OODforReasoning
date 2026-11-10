@@ -74,6 +74,9 @@ class GeometryScorer:
                 out["negative_entropy"] = (logp.exp() * logp).sum()
         if "logit_margin" in self.metrics:
             out["logit_margin"] = logits.topk(2).values.diff().neg().squeeze()
+        if "shannon_top20" in self.metrics:
+            logp_top = logits.topk(min(20, logits.numel())).values.log_softmax(-1)
+            out["shannon_top20"] = (logp_top.exp() * logp_top).sum()
         finite_ks = [k for k in self.ks if k != "all"]
         if finite_ks:
             # Mask the winner explicitly, including ties, before selecting alternatives.

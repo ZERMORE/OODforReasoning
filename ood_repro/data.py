@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import random
 import re
 from decimal import Decimal, InvalidOperation
@@ -12,6 +13,7 @@ SPECS = {
     "csqa": ("tau/commonsense_qa", None, "validation", 1221),
     "gsm8k": ("openai/gsm8k", "main", "test", 1319),
     "aqua": ("deepmind/aqua_rat", "raw", "validation", 254),
+    "math": ("EleutherAI/hendrycks_math", None, "test", 5000),
 }
 
 
@@ -30,6 +32,12 @@ def normalize(row, task, index):
     elif task == "aqua":
         options = [re.sub(r"^([A-E])\s*\)", lambda m: f"({m[1].lower()})", text.strip()) for text in row["options"]]
         gold = row["correct"].upper()
+    elif task == "math":
+        gold = last_boxed(row["solution"])
+        if not gold:
+            raise ValueError(f"Missing boxed MATH reference at {index}")
+        return {"sample_id": str(row.get("id", f"{task}:{index}")), "question": row["problem"],
+                "options": [], "gold_answer": gold, "level": row.get("level"), "subject": row.get("type")}
     else:
         options = []
         gold = number(row["answer"].split("####")[-1].strip())
@@ -46,6 +54,8 @@ def load_examples(task, split=None, local_jsonl=None, revision=None, limit=None,
         examples = [normalize(row, task, f"{split}:{i}") for i, row in enumerate(raw)]
         fingerprint = digest(raw)
     else:
+        if task == "math":
+            raise ValueError("Use a pinned local MATH JSONL combining all seven subject configurations")
         from datasets import load_dataset
         dataset = load_dataset(name, name=config, split=split, revision=revision)
         if split == default_split and len(dataset) != expected:
@@ -81,6 +91,8 @@ def number(text):
 
 def extract_answer(response, task):
     """Use the last required answer marker, never any incidental reasoning number."""
+    if task == "math":
+        return last_boxed(response)
     if task == "gsm8k":
         # Optional terminal period, commas and scientific notation are normalized.
         marker = r"The answer is\s+"
@@ -94,3 +106,50 @@ def extract_answer(response, task):
         return None
     raw = matches[-1][1]
     return number(raw) if task == "gsm8k" else raw.upper()
+
+
+def last_boxed(text):
+    """Read the final boxed answer, including the dataset's unbraced form."""
+    markers = list(re.finditer(r"\\(?:boxed|fbox)(?![A-Za-z])\s*", text))
+    if not markers:
+        return None
+    start = markers[-1].end()
+    if text[start:start + 1] != "{":
+        unbraced = re.match(r"([^$\n]+)\$", text[start:])
+        if unbraced:
+            return unbraced[1].strip() or None
+        return None
+    depth = 1
+    for index in range(start + 1, len(text)):
+        if text[index - 1] == "\\":
+            continue
+        depth += (text[index] == "{") - (text[index] == "}")
+        if depth == 0:
+            return text[start + 1:index].strip() or None
+    return None
+
+
+def grade_math(parsed, gold):
+    if parsed is None:
+        return False, "no_boxed_answer"
+    if parsed == gold:
+        return True, "exact"
+    from math_verify import LatexExtractionConfig, parse, verify
+    from math_verify.errors import TimeoutException
+    config = [LatexExtractionConfig()]
+    # Math-Verify 0.8's Windows timeout wrapper cannot pickle its worker.
+    timeout = 5 if os.name == "posix" else None
+    try:
+        expected = parse(f"${gold}$", extraction_config=config, fallback_mode="no_fallback",
+                         parsing_timeout=timeout, raise_on_error=True)
+        actual = parse(f"${parsed}$", extraction_config=config, fallback_mode="no_fallback",
+                       parsing_timeout=timeout, raise_on_error=True)
+        if not expected:
+            return False, "reference_parse_failure"
+        if not actual:
+            return False, "prediction_parse_failure"
+        return bool(verify(expected, actual, timeout_seconds=timeout, raise_on_error=True)), "symbolic"
+    except TimeoutException:
+        return False, "grader_timeout"
+    except (ValueError, TypeError, ArithmeticError, RuntimeError):
+        return False, "grader_error"

@@ -9,11 +9,13 @@ from .study_io import (file_hash, implementation_hash, independent_output, seal_
 
 
 class StudyScorer:
-    def __init__(self, model, ks):
+    def __init__(self, model, ks, shannon=False):
         from .scoring import GeometryScorer
         from .deepconf import TopKConfidence
         head = model.get_output_embeddings()
         self.geometry = GeometryScorer(head.weight, getattr(head, "bias", None), ks=ks)
+        if shannon:
+            self.geometry.metrics.add("shannon_top20")
         self.confidence = TopKConfidence(20)
 
     def score(self, state, logits, token):
@@ -51,6 +53,7 @@ def main():
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--limit", type=int, help="Smoke only; use a separate output directory")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--shannon", action="store_true", help="Also save top-20 negative Shannon entropy")
     args = parser.parse_args()
     source, output = independent_output(args.source, args.output)
     manifest, rows = source_run(source)
@@ -63,6 +66,8 @@ def main():
                 "source_predictions_sha256": file_hash(source / "predictions.jsonl"),
                 "implementation_hash": implementation_hash(), "model_override": args.model,
                 "limit": args.limit, "mode": "matched", "top_k": 20, "count": len(rows)}
+    if args.shannon:
+        settings["shannon_top20"] = True
     signature, previous, saved = start_output(output, settings, args.resume)
     if len(previous) > len(rows):
         raise ValueError("Resume has extra rows")
@@ -76,7 +81,7 @@ def main():
         from tqdm import tqdm
         model, tokenizer, env = source_model(args, manifest, saved.get("environment") if saved else None)
         ks = tuple(manifest.get("resolved_ks", parse_ks(manifest["config"]["ks"])))
-        scorer = StudyScorer(model, ks)
+        scorer = StudyScorer(model, ks, args.shannon)
         saved = {"signature": signature, "settings": settings, "source_manifest": manifest,
                  "environment": env, "complete": False, "dataset": {"sample_ids": [r["sample_id"] for r in rows]}}
         write_json(output / "manifest.json", saved)

@@ -1,5 +1,6 @@
 """Experiment 2: supervised aggregation with frozen question splits and set controls."""
 import argparse
+from collections import Counter
 import json
 from pathlib import Path
 
@@ -93,14 +94,16 @@ def train_sequence(kind, train, validation, labels, val_labels, seed, args):
                          "parameters": sum(p.numel() for p in model.parameters()), "state_dict": best_state}
 
 
-def summarize(test, models, bootstrap=2000, seed=0):
+def summarize(test, models, bootstrap=2000, seed=0, cross_signal=False):
     errors = np.array([not r["is_correct"] for r in test], dtype=int)
     flattened = {f"{name}::{rep}": values for name, replicas in models.items() for rep, values in replicas.items()}
     samples = bootstrap_aucs(errors, flattened, bootstrap, seed)
     records = []
+    draws_by_name = {}
     for name, replicas in models.items():
         metric, method = name.split("/", 1)
         draws = np.mean([samples[f"{name}::{rep}"] for rep in replicas], axis=0)
+        draws_by_name[name] = draws
         points = [float(roc_auc_score(errors, -values)) for values in replicas.values()]
         record = {"metric": metric, "method": method, "auroc": float(np.mean(points)),
                   "ci95": np.quantile(draws, [.025, .975]).tolist(), "replica_aurocs": dict(zip(replicas, points)),
@@ -114,6 +117,21 @@ def summarize(test, models, bootstrap=2000, seed=0):
             record["paired_deltas"][reference] = {"delta": record["auroc"] - float(base_point),
                 "ci95": np.quantile(draws - base, [.025, .975]).tolist()}
         records.append(record)
+    if cross_signal:
+        points = {f"{r['metric']}/{r['method']}": r["auroc"] for r in records}
+        for record in records:
+            metric, method = record["metric"], record["method"]
+            shannon, geometry = f"shannon_top20/{method}", f"{metric}/{method}"
+            if metric == "shannon_top20" or shannon not in points:
+                continue
+            contrasts = {"shannon_minus_geometry": {shannon: 1, geometry: -1}}
+            if method == "evidence_drop":
+                contrasts["shannon_minus_geometry_drop_gain"] = {
+                    shannon: 1, geometry: -1, "shannon_top20/mean": -1, f"{metric}/mean": 1}
+            record["cross_signal"] = {name: {
+                "delta": sum(weight * points[key] for key, weight in terms.items()),
+                "ci95": np.quantile(sum(weight * draws_by_name[key] for key, weight in terms.items()), [.025, .975]).tolist(),
+            } for name, terms in contrasts.items()}
     return records
 
 
@@ -154,7 +172,11 @@ def main():
     parser.add_argument("--bootstrap", type=int, default=2000)
     parser.add_argument("--min-train-errors", type=int, default=20)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--evidence-study", action="store_true", help="Run the Evidence Drop crossover with GRU")
     args = parser.parse_args()
+    if args.evidence_study:
+        args.metrics = "shannon_top20,fdbd_all,nci"
+        args.models = "gru"
     import torch
     import matplotlib  # Fail before fitting models if plotting dependency is absent.
     import sklearn
@@ -179,6 +201,9 @@ def main():
     _, output = independent_output(args.test, args.output)
     independent_output(args.pool, output)
     partitions, test, split = load_study(args.pool, args.test, args.split)
+    test_errors = np.array([not row["is_correct"] for row in test], dtype=int)
+    if len(np.unique(test_errors)) != 2:
+        raise ValueError("Test AUROC requires both answer classes")
     counts = {key: {"n": len(rows), "errors": sum(not r["is_correct"] for r in rows)} for key, rows in partitions.items()}
     if counts["train"]["errors"] < args.min_train_errors:
         raise ValueError(f"Too few train errors: {counts}; enlarge train pool, do not search seeds for a favorable split")
@@ -188,6 +213,8 @@ def main():
     config = {k: v for k, v in vars(args).items() if k not in {"resume", "output"}}
     code = {name: file_hash(Path(__file__).parent / name) for name in (
         "eval2_fit.py", "eval2_models.py", "eval2_data.py", "aggregation.py", "visualize.py")}
+    if args.evidence_study:
+        code["evidence.py"] = file_hash(Path(__file__).with_name("evidence.py"))
     environment = {"torch": torch.__version__, "numpy": np.__version__, "sklearn": sklearn.__version__,
                    "cuda": torch.version.cuda, "device": args.device,
                    "gpu": torch.cuda.get_device_name(args.device) if str(args.device).startswith("cuda") else None}
@@ -199,12 +226,26 @@ def main():
     write_json(output / "manifest.json", {"signature": signature, "config": config, "split": split, "counts": counts,
         "code": code, "environment": environment, "complete": False})
     models, jobs, thresholds = {}, {}, {}
+    evidence_metrics, drop_positions = {}, {}
     errors = {name: np.array([not r["is_correct"] for r in rows], dtype=int) for name, rows in partitions.items()}
     for metric in args.metrics.split(","):
         arrays = {name: sequences(rows, metric) for name, rows in {**partitions, "test": test}.items()}
-        for aggregation in ("mean", "min", "quantile10", "token_bottom10", "head_weighted", "tail_weighted", "lowest_w64"):
-            name = metric + "/" + aggregation
-            models[name] = {"fixed": np.array([pooling(x[:, 0])[aggregation] for x in arrays["test"]])}
+        if args.evidence_study:
+            from .evidence import fixed_scores, detection_summary, evidence_drop
+            fixed, drop_positions[metric] = fixed_scores(arrays["test"])
+            calibration_fixed, _ = fixed_scores(arrays["calibration"])
+            for aggregation, confidence in fixed.items():
+                name = metric + "/" + aggregation
+                models[name] = {"fixed": confidence}
+                evidence_metrics[name] = {"fixed": detection_summary(test_errors, confidence,
+                                                       errors["calibration"], calibration_fixed[aggregation])}
+            order_rng = np.random.default_rng(1729)
+            models[metric + "/evidence_drop_test_shuffle"] = {"fixed": -np.array([
+                evidence_drop(order_rng.permutation(x[:, 0]))[0] for x in arrays["test"]])}
+        else:
+            for aggregation in ("mean", "min", "quantile10", "token_bottom10", "head_weighted", "tail_weighted", "lowest_w64"):
+                name = metric + "/" + aggregation
+                models[name] = {"fixed": np.array([pooling(x[:, 0])[aggregation] for x in arrays["test"]])}
         models[metric + "/length_only"] = {"fixed": -np.array([len(x) for x in arrays["test"]], dtype=float)}
         for kind in kinds:
             replicas = seeds[:1] if kind == "logreg" else seeds
@@ -246,9 +287,13 @@ def main():
                     threshold = float(np.quantile(calibration[errors["calibration"] == 0], .05))
                     saved.update(test_confidence=confidence.tolist(), threshold=threshold,
                                  calibration_actual_fpr=float((calibration[errors["calibration"] == 0] < threshold).mean()))
+                    if args.evidence_study:
+                        saved["evidence_metrics"] = detection_summary(test_errors, confidence, errors["calibration"], calibration)
                     saved["job_hash"] = digest(saved)
                     write_json(job, saved)
                 models.setdefault(name, {})[rep] = confidence
+                if args.evidence_study:
+                    evidence_metrics.setdefault(name, {})[rep] = saved["evidence_metrics"]
                 thresholds[f"{name}::{rep}"] = {"threshold": saved["threshold"], "calibration_actual_fpr": saved["calibration_actual_fpr"],
                     "test_actual_fpr": float((confidence[np.array([r["is_correct"] for r in test])] < saved["threshold"]).mean()),
                     "test_tpr": float((confidence[np.array([not r["is_correct"] for r in test])] < saved["threshold"]).mean())}
@@ -256,12 +301,48 @@ def main():
                 for control, values in saved.get("test_controls", {}).items():
                     models.setdefault(name + "_test_" + control, {})[rep] = np.array(values)
     print("Experiment2: paired question bootstrap and report", flush=True)
-    records = summarize(test, models, args.bootstrap)
+    records = summarize(test, models, args.bootstrap, cross_signal=args.evidence_study)
+    if args.evidence_study:
+        from .evidence import render_distributions
+        lengths = np.array([r["scored_tokens"] for r in test])
+        length_groups = []
+        for low, high in ((0, 64), (64, 128), (128, 256), (256, int(lengths.max()))):
+            mask = (lengths > low) & (lengths <= high)
+            labels = test_errors[mask]
+            length_groups.append({"min_exclusive": low, "max_inclusive": max(high, low),
+                                  "n": int(mask.sum()), "errors": int(labels.sum()),
+                                  "auroc": {name: float(np.mean([roc_auc_score(labels, -v[mask]) for v in models[name].values()]))
+                                            for name in evidence_metrics} if len(np.unique(labels)) == 2 else {}})
+        write_json(output / "evidence_metrics.json", {"n": len(test), "errors": int(test_errors.sum()),
+                   "boxed_or_numeric_extraction_failures": sum(r.get("parsed_answer") is None for r in test),
+                   "truncated": sum(r.get("stop_reason") == "max_new_tokens" for r in test),
+                   "math_grade_status": dict(Counter(r["math_grade_status"] for r in test if "math_grade_status" in r)),
+                   "combinations": evidence_metrics, "length_groups": length_groups})
+        lines = ["# Evidence Drop × OOD", "", f"Test trajectories: {len(test)}. Errors: {test_errors.sum()}.", "",
+                 "|Signal|Aggregation|AUROC ×100 [95% CI]|Δ vs mean ×100 [95% CI]|AP ×100|AURC ×100|",
+                 "|---|---|---:|---:|---:|---:|"]
+        for record in records:
+            name = f"{record['metric']}/{record['method']}"
+            if name not in evidence_metrics:
+                continue
+            delta = record["paired_deltas"]["mean"]
+            auroc = f"{record['auroc']*100:.2f} [{record['ci95'][0]*100:.2f}, {record['ci95'][1]*100:.2f}]"
+            change = f"{delta['delta']*100:+.2f} [{delta['ci95'][0]*100:+.2f}, {delta['ci95'][1]*100:+.2f}]"
+            replicas = evidence_metrics[name].values()
+            ap = np.mean([replica["ap"] for replica in replicas])
+            aurc = np.mean([replica["aurc"] for replica in replicas])
+            lines.append(f"|{record['metric']}|{record['method']}|{auroc}|{change}|{ap*100:.2f}|{aurc*100:.2f}|")
+        (output / "evidence_report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        render_distributions(models, test_errors, output)
     write_json(output / "experiment2.json", {"records": records, "jobs": jobs, "thresholds": thresholds,
         "note": "Neural checkpoints chosen by validation only. CIs resample test questions; training-seed std reported separately. Exploratory, unadjusted CIs."})
     with (output / "test_predictions.jsonl").open("w", encoding="utf-8") as stream:
         for i, row in enumerate(test):
             stream.write(json.dumps({"sample_id": row["sample_id"], "is_correct": row["is_correct"],
+                **({"scored_tokens": row["scored_tokens"], "stop_reason": row["stop_reason"],
+                    "parsed_answer": row["parsed_answer"], "math_grade_status": row.get("math_grade_status"),
+                    "drop_positions": {metric: [row["sequence_tokens"][p]["position"] for p in positions[i]]
+                    for metric, positions in drop_positions.items()}} if args.evidence_study else {}),
                 "confidence": {name: {rep: float(values[i]) for rep, values in replicas.items()} for name, replicas in models.items()}}, allow_nan=False) + "\n")
     lines = ["# Eval section 2 — experiment 2", "", "|Metric|Method|AUROC x100 [95% CI]|Delta vs mean [95% CI]|Seed std (points)|",
              "|---|---|---:|---:|---:|"]
