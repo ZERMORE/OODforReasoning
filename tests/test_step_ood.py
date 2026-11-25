@@ -87,6 +87,19 @@ def test_score_response_uses_preceding_causal_state(monkeypatch):
         expected=scorer.score(z,model.head(z),tokens[i])
         for k in expected:
             assert t['scores'][k]==pytest.approx(expected[k].item())
+    class NoncanonicalTokenizer(Tokenizer):
+        all_special_ids=[0]
+        backend_tokenizer=SimpleNamespace(decoder=SimpleNamespace(__getstate__=lambda:json.dumps({'type':'ByteLevel'})))
+        def __call__(self,text,**kwargs):
+            return {'input_ids':[127], 'offset_mapping':[(0,len(text))]}
+        def convert_ids_to_tokens(self,ids):
+            from step_ood.token_alignment import _byte_decoder
+            byte_chars={v:k for k,v in _byte_decoder().items()}
+            return [chr(0) if i==0 else byte_chars[i] for i in ids]
+    noncanonical=s.score_response(model,NoncanonicalTokenizer(),scorer,source)
+    assert noncanonical['token_alignment']['method']=='original_bytelevel_bytes'
+    assert noncanonical['token_scores']==output['token_scores']
+    assert noncanonical['step_scores']==output['step_scores']
     source['produced_text']='changed'
     with pytest.raises(ValueError,match='decoding'):
         s.score_response(model,tokenizer,scorer,source)

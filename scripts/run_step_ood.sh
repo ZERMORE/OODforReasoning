@@ -12,7 +12,7 @@ phase="${1:-help}"
 split="${2:-test}"
 task="${STEP_TASK:-gsm8k}"
 source="${STEP_SOURCE:-$DATA_ROOT/results/StepCluster/${STEP_SOURCE_RUN:-qwen25-pilot-chat-v2}}"
-root="${STEP_OOD_ROOT:-$DATA_ROOT/results/OODmethod/step-ood-v1/${STEP_SOURCE_RUN:-qwen25-pilot-chat-v2}/$task}"
+root="${STEP_OOD_ROOT:-$DATA_ROOT/results/OODmethod/step-ood-align-v2/${STEP_SOURCE_RUN:-qwen25-pilot-chat-v2}/$task}"
 model=()
 if [[ -n "${MODEL_PATH:-}" ]]; then model=(--model "$MODEL_PATH"); fi
 replay_split() {

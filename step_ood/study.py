@@ -11,6 +11,7 @@ from sklearn.metrics import average_precision_score, roc_auc_score
 
 from ood_repro.data import digest
 from ood_repro.study_io import (check_record, file_hash, seal_record, start_output, write_json)
+from .token_alignment import original_token_offsets
 
 RULES = ('full_mean', 'reasoning_token_mean', 'step_mean', 'worst_step',
          'worst_two_steps', 'worst_adjacent_two', 'low_step_fraction')
@@ -26,7 +27,9 @@ def jsonl(path):
 
 def implementation():
     root = Path(__file__).resolve().parents[1]/'ood_repro'
-    return digest({'step_ood/study.py': file_hash(__file__), **{n: file_hash(root/n) for n in
+    return digest({'step_ood/study.py': file_hash(__file__),
+                   'step_ood/token_alignment.py': file_hash(Path(__file__).with_name('token_alignment.py')),
+                   **{n: file_hash(root/n) for n in
                    ('scoring.py', 'engine.py', 'cli.py', 'study_io.py', 'data.py')}})
 
 
@@ -93,17 +96,18 @@ def score_response(model, tokenizer, scorer, row):
     clean = tokenizer.decode(generated, skip_special_tokens=True, clean_up_tokenization_spaces=False)
     if raw != row['decoded_with_specials'] or clean != row['produced_text']:
         raise ValueError('Source tokenizer decoding changed')
-    encoded = tokenizer(raw, add_special_tokens=False, return_offsets_mapping=True)
-    if list(encoded['input_ids']) != generated:
-        raise ValueError('Tokenizer roundtrip differs; cannot silently realign steps')
+    aligned, offsets, alignment = original_token_offsets(tokenizer, generated)
+    if aligned != raw:
+        raise ValueError('Original-token alignment changed response text')
     stops = eos_ids(model, tokenizer)
     if any(t in stops for t in generated[:-1]):
         raise ValueError('EOS occurs before continuation ends')
     result = replay(model, row['input_ids'], generated, scorer, mode='matched',
                     stop_ids=stops, include_eos=False, save_tokens=True)
-    steps = reduce_steps(raw, encoded['offset_mapping'], result['token_scores'])
+    steps = reduce_steps(raw, offsets, result['token_scores'])
     return {'step_scores': steps, 'full_scores': result['scores'],
-            'token_scores': result['token_scores'], 'scored_tokens': result['scored_tokens']}
+            'token_scores': result['token_scores'], 'scored_tokens': result['scored_tokens'],
+            'token_alignment': alignment}
 
 
 def replay_source(args):

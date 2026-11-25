@@ -32,6 +32,8 @@ test 同时报告错误正类 AUROC、AP（随机基线=错误率）、FPR、TPR
 
 同一批轨迹上的 full_mean / reasoning_token_mean 对照用于比较聚合。原 OOD 的自由格式/不同提示结果只能作为另一生成协议，不能把正确率或检测差异都归因于步骤聚合。
 
+非规范 BPE 切分的对齐修复：优先使用相同切分的 fast offsets，否则严格从原始 ByteLevel token 字节重建文本并映射，保留原始生成 IDs。实现变化后使用独立的 step-ood-align-v2 结果目录，不强行续写旧版回放。若旧 B 任务仍运行，先等待结束或停止，再同步代码。
+
 ## 1. Git 同步
 
 本地 PowerShell：
@@ -68,7 +70,7 @@ export STEP_SOURCE_RUN=qwen25-smoke-chat-v2
 bash scripts/run_step_ood.sh smoke test
 ```
 
-默认只回放两题，验证真实模型的对齐、评分和文件输出。没有重新生成。输出为 `$DATA_ROOT/results/OODmethod/step-ood-v1/qwen25-smoke-chat-v2/gsm8k/smoke/test`。仅 test 的 smoke 无法运行三划分校准分析，这是预期的。
+默认只回放两题，验证真实模型的对齐、评分和文件输出。没有重新生成。输出为 `$DATA_ROOT/results/OODmethod/step-ood-align-v2/qwen25-smoke-chat-v2/gsm8k/smoke/test`。仅 test 的 smoke 无法运行三划分校准分析，这是预期的。
 
 ## 3. 完成 StepCluster pilot 后启动正式步骤分析
 
@@ -111,7 +113,7 @@ ANALYSIS_TAG=report-v2 bash scripts/run_step_ood.sh analyze
 
 ## 4. 输出与解读
 
-默认根目录：`/mnt/data/wxh/wdl/results/OODmethod/step-ood-v1/qwen25-pilot-chat-v2/gsm8k/`。
+默认根目录：`/mnt/data/wxh/wdl/results/OODmethod/step-ood-align-v2/qwen25-pilot-chat-v2/gsm8k/`。
 
 - replay/train、validation、test：manifest.json 与 predictions.jsonl；保存逐 token 分数、每步平均、原文与来源哈希。格式错误/截断保留排除记录，不悄悄删除。
 - analysis/main/metrics.csv 和 metrics.json：2 个指标 × 7 种规则，共 14 行主结果。
@@ -133,5 +135,5 @@ export STEP_SOURCE_RUN=qwen25-full-chat-v2
 本地取回 pilot 结果：
 
 ```powershell
-scp -r wxh@rtx6000.yangtan.top:/mnt/data/wxh/wdl/results/OODmethod/step-ood-v1 E:\Research\LLMCoT\methods\OODResults\
+scp -r wxh@rtx6000.yangtan.top:/mnt/data/wxh/wdl/results/OODmethod/step-ood-align-v2 E:\Research\LLMCoT\methods\OODResults\
 ```
