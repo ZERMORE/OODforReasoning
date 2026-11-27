@@ -14,7 +14,7 @@ G1 复用已生成的 Qwen2.5-7B-Instruct 轨迹。GSM8K 和半量 MATH 读取�
 
 ```powershell
 cd E:\Research\LLMCoT\methods\OODmethod
-git add geom_diagnostics scripts/run_geom_g1.sh docs/GEOM_G1.md
+git add geom_diagnostics scripts/run_geom_g1.sh docs/GEOM_G1.md tests/test_geom_g1_replay.py
 git commit -m "Add G1 head geometry diagnostics"
 git push
 ```
@@ -43,6 +43,8 @@ SMOKE_LIMIT=2 bash scripts/run_geom_g1.sh smoke step
 ```
 
 smoke 只回放，输出在 `$GEOM_ROOT/smoke/`。默认 30 条/划分。改变 smoke 数量时用新 `GEOM_ROOT`，避免与已有签名冲突。第一个 smoke 成功后可查看 `rows/*.json` 的 `score_audit`。
+
+如果旧 smoke 在首条轨迹报 `mean() ... Got: Long`，请先更新代码并换一个 G1 根目录，例如 `export GEOM_ROOT="$DATA_ROOT/results/OODmethod/geom-diagnostics-v1-fixed"`。修复将候选 token ID 保存在每 token 的诊断字段，连续分数仍走原有聚合引擎。新代码签名与旧 smoke 不兼容，旧目录可保留排查。
 
 完整三组在一张 GPU 上顺序运行并写日志：
 

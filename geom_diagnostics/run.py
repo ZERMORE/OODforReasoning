@@ -142,7 +142,7 @@ def fit_reference(model, tokenizer, rows, stops, scorer, path):
         position = 0
 
         def score(self, state, logits, token):
-            index = current_mapping.get(self.position, 0)
+            index = current_mapping.get(current_positions[self.position], 0)
             self.position += 1
             vector = torch.nn.functional.normalize(state.float() - scorer.baselines.center, dim=0)
             for key in {0, index}:
@@ -154,6 +154,7 @@ def fit_reference(model, tokenizer, rows, stops, scorer, path):
     ref = Reference()
     for row in tqdm(rows, desc="unlabeled step reference"):
         current_mapping = step_map(tokenizer, row)
+        current_positions = positions_for(row, stops, include_eos=False)
         ref.position = 0
         replay(model, row["prompt"], row["tokens"], ref, stop_ids=stops, mode="matched")
     directions = {k: torch.nn.functional.normalize(v, dim=0) for k,v in sums.items()
@@ -236,14 +237,13 @@ def replay_job(args):
         expected = positions_for(row, stops, policy["include_eos"])
         historical = row["cached_fdbd"]
         scorer.baselines.ks = () if historical else ("all",)
-        scorer.position = 0
         record = dict(id=row["id"], split=row["split"], question_hash=question_hash(row["question"]),
                       error=not row["correct"], source_hash=row["source_hash"])
         if not expected:
             write(dest, seal_record(dict(record, excluded="no scored tokens")))
             continue
-        if args.kind == "step":
-            scorer.token_steps = step_map(tokenizer, row)
+        token_steps = step_map(tokenizer, row) if args.kind == "step" else {}
+        scorer.begin_trajectory(expected, token_steps)
         result = replay(model, row["prompt"], row["tokens"], scorer, stop_ids=stops,
                         include_eos=policy["include_eos"], save_tokens=True, mode="matched")
         trace = result["token_scores"]
@@ -273,10 +273,7 @@ def replay_job(args):
                     audit[key] = abs(new-old)
                     if not np.isclose(new, old, atol=policy["atol"], rtol=policy["rtol"]):
                         raise ValueError(f"{row['id']}: replay audit failed for {key}: {new} vs {old}")
-        for token in trace:
-            token["winner_id"] = int(token["scores"].pop("winner_id"))
-            token["competitor_id"] = int(token["scores"].pop("competitor_id"))
-            token["step"] = scorer.token_steps.get(token["position"]) if args.kind == "step" else None
+        scorer.attach_metadata(trace)
         write(dest, seal_record(dict(record, token_scores=trace, score_audit=audit)))
     for _ in verified_rows(out, manifest):
         pass
